@@ -1,0 +1,49 @@
+* Cmd-rewind
+Resume the last recorded Emacs =completing-read= session with saved arguments and input.
+
+Inspired by [[https://github.com/abo-abo/swiper/blob/master/ivy.el][ivy-resume]], Cmd-rewind uses native Emacs APIs and has no third-party package dependencies.
+* Features
+- Record the arguments and minibuffer input of interactive =completing-read= calls
+- Resume the last recorded session by re-running the original command
+- Restore the saved completion arguments and the input entered before leaving the minibuffer
+- Configure command exclusions using regular expressions
+* Installation
+Place =cmd-rewind.el= under [[https://www.emacswiki.org/emacs/LoadPath][Load Path]].
+* Setup
+Insert below code into =~/.emacs.d/init.el=,
+#+BEGIN_SRC lisp
+(require 'cmd-rewind)
+(cmd-rewind-mode 1)
+#+END_SRC
+* Usage
+** Quick Start
+- Run an interactive command that calls =completing-read=.
+- Enter some text in the minibuffer.
+- Exit the command or cancel the completion.
+- Run =M-x cmd-rewind-resume= to re-run original command and restore the saved completion arguments and minibuffer input.
+** Configuration
+Customize =cmd-rewind-excluded-commands= to exclude commands by name using regular expressions,
+#+BEGIN_SRC emacs-lisp
+(setq cmd-rewind-excluded-commands
+'("^cmd-rewind-resume$"
+"^execute-extended-command$"
+"^describe-.*$"))
+#+END_SRC
+** Limitations
+- Rewind records calls to the built-in =completing-read=; commands using other input APIs are not necessarily supported.
+- Each resumable command must call `completing-read` only once. Add commands that call it multiple times to `cmd-rewind-excluded-commands`.
+- Resuming re-runs the original command. Side effects that occur before the completion call may happen again.
+- The saved completion arguments and collection are reused. If the underlying data changes, the saved collection may no longer reflect the current state.
+- Commands that do not call =completing-read= during replay cannot be resumed by this mechanism.
+** For Command Developers
+When =cmd-rewind-replay-session= is non-nil, Rewind is replaying a previously recorded session.
+
+If your command performs expensive work solely to prepare the collection for a =completing-read= call, you may skip that work during replay, provided the saved collection remains valid and the skipped work is not required by other parts of the command.
+* Feedback
+Report bugs at [[https://github.com/redguardtoo/cmd-rewind]].
+
+* License
+This program is free software: you can redistribute it and/or modify it under the terms of the [[file:LICENSE][GNU General Public License]] as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [[file:LICENSE][GNU General Public License]] for more details.
+     
