@@ -151,7 +151,7 @@ ORIG is the original function and ARGS are its arguments."
         (message "Ignoring command: %S" command))
       (apply orig args))
 
-     ;; Replay the saved call for a named command.
+     ;; Replay a named command, but `completing-read' not called, yet.
      ((and cmd-rewind-replay-session
            (not cmd-rewind-completing-read-replaying-p))
       (setq session cmd-rewind-replay-session)
@@ -179,7 +179,12 @@ ORIG is the original function and ARGS are its arguments."
         (cmd-rewind-read orig saved-completing-read-args session)))
 
      ;; Do not record nested calls during replay, or commands explicitly excluded by configuration.
-     ((or cmd-rewind-replay-session
+     ((or (and cmd-rewind-replay-session
+               cmd-rewind-completing-read-replaying-p) ; inside `completing-read'
+          ;; Please note `cmd-rewind-resume' is excluded too.
+          ;; Its logic is different from other excluded commands, see the code from beginning of
+          ;; this function!
+          ;; So `cmd-rewind-excluded-command-p' called is near the end of conditional statement
           (cmd-rewind-excluded-command-p command))
       (when cmd-rewind-debug
         (message "Not recording command: %S" command))
