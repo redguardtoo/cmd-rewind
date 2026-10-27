@@ -144,10 +144,11 @@ ORIG is the original function and ARGS are its arguments."
     (when cmd-rewind-debug
       (message "cmd-rewind-around-completing-read: command=%S" command))
     (cond
-     ;; Anonymous commands must never participate in recording or replay.
-     ((not (symbolp command))
+     ;; Anonymous&Non-interactive commands and never participate in recording or replay
+     ((or (not (symbolp command))
+          (not (commandp command)))
       (when cmd-rewind-debug
-        (message "Ignoring anonymous command: %S" command))
+        (message "Ignoring command: %S" command))
       (apply orig args))
 
      ;; Replay the saved call for a named command.
@@ -177,10 +178,8 @@ ORIG is the original function and ARGS are its arguments."
       (let ((cmd-rewind-completing-read-replaying-p t))
         (cmd-rewind-read orig saved-completing-read-args session)))
 
-     ;; Do not record nested calls during replay, non-interactive commands,
-     ;; or commands explicitly excluded by configuration.
+     ;; Do not record nested calls during replay, or commands explicitly excluded by configuration.
      ((or cmd-rewind-replay-session
-          (not (commandp command))
           (cmd-rewind-excluded-command-p command))
       (when cmd-rewind-debug
         (message "Not recording command: %S" command))
