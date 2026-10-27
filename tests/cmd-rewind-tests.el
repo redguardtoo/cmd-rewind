@@ -37,7 +37,7 @@
         (cmd-rewind-debug t))
     (cl-letf (((symbol-function 'completing-read)
                (lambda (&rest _args) "banana")))
-      (let ((this-command 'cmd-rewind-test-command))
+      (let ((current-minibuffer-command 'cmd-rewind-test-command))
         (apply #'cmd-rewind-around-completing-read
                (lambda (&rest _args) "banana")
                '("Choose: " ("apple" "banana" "cherry") nil nil "ban"))))

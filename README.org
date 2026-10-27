@@ -39,6 +39,43 @@ Customize =cmd-rewind-excluded-commands= to exclude commands by name using regul
 When =cmd-rewind-replay-session= is non-nil, Rewind is replaying a previously recorded session.
 
 If your command performs expensive work solely to prepare the collection for a =completing-read= call, you may skip that work during replay, provided the saved collection remains valid and the skipped work is not required by other parts of the command.
+
+An advanced example for command developer (Please add the line ";; -*- lexical-binding: t; -*-" into the beginning of code file),
+#+begin_src elisp
+;; -*- lexical-binding: t; -*-
+;; Run "M-x my-command", then run "M-x cmd-rewind-resume" to test
+(defun my-completion-table (candidates)
+  "Create a completion table CANDIDATES."
+  (lambda (string pred action)
+    (cond
+     ((eq action 'metadata)
+      `(metadata (category . my-command)))
+     ((eq action 'original-candidates)
+      candidates)
+     (t
+      (complete-with-action action candidates string pred)))))
+
+(defun my-computing ()
+  "Do some computing here."
+  '(("Apple" . "My apple") ("Peach" . "My peach")))
+
+(defun my-command ()
+  "My command."
+  (interactive)
+  (let* ((replay-session (and (boundp 'cmd-rewind-replay-session)
+                              cmd-rewind-replay-session))
+         (candidates (cond
+                      (replay-session
+                       ;; `my-command' is started by `cmd-rewind-resume'
+                       ;; Avoid execution of `my-computing' here, use cached data
+                       ;; Note COLLECTION is second parameters of `completing-read'
+                       ;; See `my-completion-table' for details
+                       (funcall (nth 1 (plist-get replay-session :completing-read-args)) nil nil 'original-candidates))
+                      (t
+                       (my-computing))))
+         (selected (completing-read "Select fruit: " (my-completion-table candidates))))
+    (message "Selected fruit: %s" (cdr (assoc selected candidates)))))
+#+end_src
 * Feedback
 Report bugs at [[https://github.com/redguardtoo/cmd-rewind]].
 

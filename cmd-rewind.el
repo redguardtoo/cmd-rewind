@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2026
 ;; Author: Chen Bin
-;; Version: 0.1
+;; Version: 0.2
 ;; Keywords: convenience, minibuffer
 ;; Package-Requires: ((emacs "29.1"))
 
@@ -33,6 +33,41 @@
 ;;
 ;; So get collection of original `completing-read' is,
 ;;   (setq collection (nth 1 (plist-get cmd-rewind-replay-session :completing-read-args)))
+;;
+;; An advanced example for command developer (Please add the line ";; -*- lexical-binding: t; -*-"
+;; into the beginning of code file),
+;;
+;;   (defun my-completion-table (candidates)
+;;     "Create a completion table CANDIDATES."
+;;     (lambda (string pred action)
+;;        (cond
+;;         ((eq action 'metadata)
+;;          `(metadata (category . my-command)))
+;;         ((eq action 'original-candidates)
+;;          candidates)
+;;         (t
+;;          (complete-with-action action candidates string pred)))))
+;;
+;;   (defun my-computing ()
+;;     "Do some computing here."
+;;     '(("Apple" . "My apple") ("Peach" . "My peach")))
+;;
+;;   (defun my-command ()
+;;     "My command."
+;;     (interactive)
+;;     (let* ((replay-session (and (boundp 'cmd-rewind-replay-session)
+;;                                 cmd-rewind-replay-session))
+;;            (candidates (cond
+;;                         (replay-session
+;;                          ;; `my-command' is started by `cmd-rewind-resume'
+;;                          ;; Avoid execution of `my-computing' here, use cached data
+;;                          ;; Note COLLECTION is second parameters of `completing-read'
+;;                          ;; See `my-completion-table' for details
+;;                          (funcall (nth 1 (plist-get replay-session :completing-read-args)) nil nil 'original-candidates))
+;;                         (t
+;;                          (my-computing))))
+;;            (selected (completing-read "Select fruit: " (my-completion-table candidates))))
+;;       (message "Selected fruit: %s" (cdr (assoc selected candidates)))))
 ;;
 ;;; Code:
 
