@@ -2,6 +2,12 @@
 Resume the last recorded Emacs =completing-read= session with saved arguments and input.
 
 Inspired by [[https://github.com/abo-abo/swiper/blob/master/ivy.el][ivy-resume]], Cmd-rewind uses native Emacs APIs and has no third-party package dependencies.
+
+If you use Ivy/Counsel/Swiper, use =ivy-resume= instead.
+
+If you use Vertico (e.g., together with Consult), use =vertico-repeat=.
+
+=cmd-rewind= targets the built-in =completing-read= with no completion front-end (or front-ends that do not provide their own resume command).
 * Features
 - Record the arguments and minibuffer input of interactive =completing-read= calls
 - Resume the last recorded session by re-running the original command
@@ -21,17 +27,19 @@ Insert below code into =~/.emacs.d/init.el=,
 - Enter some text in the minibuffer.
 - Exit the command or cancel the completion.
 - Run =M-x cmd-rewind-resume= to re-run original command and restore the saved completion arguments and minibuffer input.
+- Run =M-x cmd-rewind-save-session= and =M-x cmd-rewind-load-session= to save and load the sessions. 
+
 ** Configuration
 Customize =cmd-rewind-excluded-commands= to exclude commands by name using regular expressions,
 #+BEGIN_SRC emacs-lisp
 (setq cmd-rewind-excluded-commands
-'("^cmd-rewind-resume$"
-"^execute-extended-command$"
-"^describe-.*$"))
+      '("^cmd-rewind-resume$"
+        "^execute-extended-command$"
+        "^describe-.*$"))
 #+END_SRC
 ** Limitations
 - Rewind records calls to the built-in =completing-read=; commands using other input APIs are not necessarily supported.
-- Each resumable command must call `completing-read` only once. Add commands that call it multiple times to `cmd-rewind-excluded-commands`.
+- Each command must call `completing-read` only once. Add commands that call it multiple times to `cmd-rewind-excluded-commands`.
 - Resuming re-runs the original command. Side effects that occur before the completion call may happen again.
 - The saved completion arguments and collection are reused. If the underlying data changes, the saved collection may no longer reflect the current state.
 - Commands that do not call =completing-read= during replay cannot be resumed by this mechanism.
