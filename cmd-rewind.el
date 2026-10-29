@@ -34,6 +34,11 @@
 ;; visible when the minibuffer exits, and the command/buffer context.
 ;; Calling `cmd-rewind-resume' re-runs that command and replays the saved
 ;; `completing-read' call with the saved arguments and last input.
+;; Calling `cmd-rewind-clear' to clear the last recorded session.
+;;
+;; Only the first completing-read call in a command is recorded and restored.
+;; Subsequent calls are ignored by cmd-rewind.  Commands that require restoring
+;; a later completing-read call are not supported.
 ;;
 ;; Sessions can also be saved to and loaded from files:
 ;;   - `cmd-rewind-save-session' saves the current session to a file.
@@ -149,9 +154,6 @@
 (defvar cmd-rewind-completing-read-replaying-p nil
   "Non-nil while the saved `completing-read' call is being replayed.")
 
-(defvar cmd-rewind-replay-completed-p nil
-  "Non-nil if a `completing-read' call was replayed during resume.")
-
 (defun cmd-rewind-current-session-p (session)
   "Return non-nil if SESSION is the current recorded session."
   (eq session cmd-rewind-last-session))
@@ -218,7 +220,8 @@ ORIG is the original function and ARGS are its arguments."
   (let* ((command current-minibuffer-command)
          session
          saved-completing-read-args
-         completing-read-initial-input)
+         completing-read-initial-input
+         rlt)
     (when cmd-rewind-debug
       (message "cmd-rewind-around-completing-read: command=%S" command))
     (cond
@@ -227,7 +230,7 @@ ORIG is the original function and ARGS are its arguments."
           (not (commandp command)))
       (when cmd-rewind-debug
         (message "Ignoring command: %S" command))
-      (apply orig args))
+      (setq rlt (apply orig args)))
 
      ;; Replay a named command, but `completing-read' not called, yet.
      ((and cmd-rewind-replay-session
@@ -253,8 +256,7 @@ ORIG is the original function and ARGS are its arguments."
       ;; Track success separately; dynamically bind the replaying flag so
       ;; it is restored even if the completion call exits with an error.
       (let ((cmd-rewind-completing-read-replaying-p t))
-        (cmd-rewind-read orig saved-completing-read-args session)
-        (setq cmd-rewind-replay-completed-p t)))
+        (setq rlt (cmd-rewind-read orig saved-completing-read-args session))))
 
      ;; Do not record nested calls during replay, or commands explicitly excluded by configuration.
      ((or (and cmd-rewind-replay-session
@@ -266,21 +268,31 @@ ORIG is the original function and ARGS are its arguments."
           (cmd-rewind-excluded-command-p command))
       (when cmd-rewind-debug
         (message "Not recording command: %S" command))
-      (apply orig args))
+      (setq rlt (apply orig args)))
 
      ;; Record a new session.
      (t
       (when cmd-rewind-debug
-        (message "Recording session for command: %S" command))
-      (cmd-rewind-read
-       orig
-       args
-       (setq cmd-rewind-last-session
-             (list :command command
-                   :completing-read-args (copy-sequence args)
-                   :directory default-directory
-                   :prefix current-prefix-arg
-                   :completing-read-input (or (nth 4 args) ""))))))))
+        (message "Recording session for command: %S default-directory" command default-directory))
+      (setq rlt
+            (cmd-rewind-read
+             orig
+             args
+             (setq cmd-rewind-last-session
+                   (list :command command
+                         :completing-read-args (copy-sequence args)
+                         :directory default-directory
+                         :prefix current-prefix-arg
+                         :completing-read-input (or (nth 4 args) "")
+                         :completing-read-input-captured nil))))))
+    rlt))
+
+
+;;;###autoload
+(defun cmd-rewind-clear ()
+  "Clear the last recorded `completing-read' session."
+  (interactive)
+  (setq cmd-rewind-last-session nil))
 
 ;;;###autoload
 (defun cmd-rewind-resume ()
@@ -295,13 +307,13 @@ ORIG is the original function and ARGS are its arguments."
       (user-error "Saved command is not a named interactive command: %S"
                   command))
     (let ((cmd-rewind-replay-session session)
-          (cmd-rewind-completing-read-replaying-p nil)
-          (cmd-rewind-replay-completed-p nil)
-          (current-prefix-arg (plist-get session :prefix)))
+      (cmd-rewind-completing-read-replaying-p nil)
+      (current-prefix-arg (plist-get session :prefix)))
+  (condition-case err
       (call-interactively command)
-      (unless cmd-rewind-replay-completed-p
-        (message
-         "The command did not call completing-read during replay; session not resumed")))))
+    (error
+     (message "cmd-rewind-resume failed: %s" (error-message-string err))
+     (signal (car err) (cdr err)))))))
 
 ;;;###autoload
 (define-minor-mode cmd-rewind-mode
@@ -334,18 +346,6 @@ ORIG is the original function and ARGS are its arguments."
                  (symbol-name command)
                "session"))
            (or (plist-get session :completing-read-input) ""))))
-
-
-(defun cmd-rewind--plist-well-formed-p (object)
-  "Return non-nil if OBJECT is a proper property list."
-  (let ((tail object)
-        (valid t))
-    (while (and valid (consp tail))
-      (if (and (keywordp (car tail))
-               (consp (cdr tail)))
-          (setq tail (cddr tail))
-        (setq valid nil)))
-    (and valid (null tail))))
 
 (defun cmd-rewind--read-session-file (file)
   "Read a session plist from FILE."

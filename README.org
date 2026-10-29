@@ -26,7 +26,8 @@ Insert below code into =~/.emacs.d/init.el=,
 - Run an interactive command that calls =completing-read=.
 - Enter some text in the minibuffer.
 - Exit the command or cancel the completion.
-- Run =M-x cmd-rewind-resume= to re-run original command and restore the saved completion arguments and minibuffer input.
+- Run =M-x cmd-rewind-resume= to re-run original command and restore the recorded completion arguments and minibuffer input.
+- Run =M-x cmd-rewind-clear= to clear the recorded completion arguments and minibuffer input.
 - Run =M-x cmd-rewind-save-session= and =M-x cmd-rewind-load-session= to save and load the sessions. 
 
 ** Configuration
@@ -39,8 +40,7 @@ Customize =cmd-rewind-excluded-commands= to exclude commands by name using regul
 #+END_SRC
 ** Limitations
 - Rewind records calls to the built-in =completing-read=; commands using other input APIs are not necessarily supported.
-- Each command must call `completing-read` only once. Add commands that call it multiple times to `cmd-rewind-excluded-commands`.
-- Resuming re-runs the original command. Side effects that occur before the completion call may happen again.
+- Only the FIRST =completing-read= call in a command is recorded and restored. Subsequent calls are ignored by =cmd-rewind=. Commands that require restoring a later =completing-read= call are not supported.
 - The saved completion arguments and collection are reused. If the underlying data changes, the saved collection may no longer reflect the current state.
 - Commands that do not call =completing-read= during replay cannot be resumed by this mechanism.
 ** For Command Developers
