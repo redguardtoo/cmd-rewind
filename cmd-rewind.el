@@ -3,7 +3,7 @@
 ;; Copyright (C) 2026 Chen Bin
 
 ;; Author: Chen Bin <chb_sh@hotmail.com>
-;; Package-Version: 1.0.0
+;; Package-Version: 1.0.1
 ;; Package-Requires: ((emacs "29.1"))
 ;; Keywords: convenience, tools
 ;; URL: http://github.com/redguardtoo/cmd-rewind
@@ -36,9 +36,8 @@
 ;; `completing-read' call with the saved arguments and last input.
 ;; Calling `cmd-rewind-clear' to clear the last recorded session.
 ;;
-;; Only the first completing-read call in a command is recorded and restored.
-;; Subsequent calls are ignored by cmd-rewind.  Commands that require restoring
-;; a later completing-read call are not supported.
+;; Each command must call `completing-read' only once.  Add commands that call it
+;; multiple times to `cmd-rewind-excluded-commands'.
 ;;
 ;; Sessions can also be saved to and loaded from files:
 ;;   - `cmd-rewind-save-session' saves the current session to a file.
@@ -154,9 +153,17 @@
 (defvar cmd-rewind-completing-read-replaying-p nil
   "Non-nil while the saved `completing-read' call is being replayed.")
 
+(defvar cmd-rewind-command-start-directory nil
+  "Directory before the current interactive command started.")
+
 (defun cmd-rewind-current-session-p (session)
   "Return non-nil if SESSION is the current recorded session."
   (eq session cmd-rewind-last-session))
+
+(defun cmd-rewind-capture-command-start ()
+  "Capture the command and directory before a command start."
+  (unless (minibufferp)
+    (setq cmd-rewind-command-start-directory default-directory)))
 
 (defun cmd-rewind-capture-input-before-command (session)
   "Capture minibuffer input before each command and save it into SESSION."
@@ -273,7 +280,7 @@ ORIG is the original function and ARGS are its arguments."
      ;; Record a new session.
      (t
       (when cmd-rewind-debug
-        (message "Recording session for command: %S default-directory" command default-directory))
+        (message "Recording session for command: %S" command))
       (setq rlt
             (cmd-rewind-read
              orig
@@ -281,7 +288,7 @@ ORIG is the original function and ARGS are its arguments."
              (setq cmd-rewind-last-session
                    (list :command command
                          :completing-read-args (copy-sequence args)
-                         :directory default-directory
+                         :directory (or cmd-rewind-command-start-directory default-directory)
                          :prefix current-prefix-arg
                          :completing-read-input (or (nth 4 args) "")
                          :completing-read-input-captured nil))))))
@@ -307,26 +314,28 @@ ORIG is the original function and ARGS are its arguments."
       (user-error "Saved command is not a named interactive command: %S"
                   command))
     (let ((cmd-rewind-replay-session session)
-      (cmd-rewind-completing-read-replaying-p nil)
-      (current-prefix-arg (plist-get session :prefix)))
-  (condition-case err
-      (call-interactively command)
-    (error
-     (message "cmd-rewind-resume failed: %s" (error-message-string err))
-     (signal (car err) (cdr err)))))))
+          (cmd-rewind-completing-read-replaying-p nil)
+          (current-prefix-arg (plist-get session :prefix)))
+      (condition-case err
+          (call-interactively command)
+        (error
+         (message "cmd-rewind-resume failed: %s" (error-message-string err))
+         (signal (car err) (cdr err)))))))
 
 ;;;###autoload
 (define-minor-mode cmd-rewind-mode
   "Globally record `completing-read' sessions for `cmd-rewind'."
   :global t
   :group 'cmd-rewind
-  (if cmd-rewind-mode
-      (advice-add 'completing-read :around
-                  #'cmd-rewind-around-completing-read)
-    (advice-remove 'completing-read
-                   #'cmd-rewind-around-completing-read)))
+  (cond
+   (cmd-rewind-mode
+    (advice-add 'completing-read :around #'cmd-rewind-around-completing-read)
+    (add-hook 'pre-command-hook #'cmd-rewind-capture-command-start))
+   (t
+    (advice-remove 'completing-read #'cmd-rewind-around-completing-read)
+    (remove-hook 'pre-command-hook #'cmd-rewind-capture-command-start))))
 
-(defun cmd-rewind--sanitize-session-name (name)
+(defun cmd-rewind-sanitize-session-name (name)
   "Convert NAME into a safe filename component."
   (let ((name (replace-regexp-in-string
                "[^[:alnum:]_-]+" "-" name)))
@@ -337,9 +346,9 @@ ORIG is the original function and ARGS are its arguments."
       name)))
 
 
-(defun cmd-rewind--default-session-name (session)
+(defun cmd-rewind-default-session-name (session)
   "Generate a default filename stem from SESSION."
-  (cmd-rewind--sanitize-session-name
+  (cmd-rewind-sanitize-session-name
    (format "%s-%s"
            (let ((command (plist-get session :command)))
              (if (symbolp command)
@@ -347,7 +356,7 @@ ORIG is the original function and ARGS are its arguments."
                "session"))
            (or (plist-get session :completing-read-input) ""))))
 
-(defun cmd-rewind--read-session-file (file)
+(defun cmd-rewind-read-session-file (file)
   "Read a session plist from FILE."
   (with-temp-buffer
     (insert-file-contents file)
@@ -362,7 +371,7 @@ ORIG is the original function and ARGS are its arguments."
       session)))
 
 
-(defun cmd-rewind--serialize-session (session)
+(defun cmd-rewind-serialize-session (session)
   "Serialize SESSION and verify that it can be read back."
   (let* ((print-length nil)
          (print-level nil)
@@ -391,16 +400,16 @@ ORIG is the original function and ARGS are its arguments."
     (user-error "No recorded cmd-rewind session"))
 
   (let* ((session cmd-rewind-last-session)
-         (default-name (cmd-rewind--default-session-name session))
+         (default-name (cmd-rewind-default-session-name session))
          (input-name (read-string
                       (format "Save session as (default %s): " default-name)
                       nil nil default-name))
-         (name (cmd-rewind--sanitize-session-name
+         (name (cmd-rewind-sanitize-session-name
                 (if (string-empty-p input-name) default-name input-name)))
          (directory (expand-file-name cmd-rewind-session-directory))
          (file (expand-file-name (concat name ".sexp") directory))
          (serialized (condition-case err
-                         (cmd-rewind--serialize-session session)
+                         (cmd-rewind-serialize-session session)
                        (error
                         (user-error "Cannot serialize session: %s"
                                     (error-message-string err))))))
@@ -454,7 +463,7 @@ Optional FILE specifies the file to load."
 
     (let ((session
            (condition-case err
-               (cmd-rewind--read-session-file session-file)
+               (cmd-rewind-read-session-file session-file)
              (error
               (user-error "Cannot load session: %s"
                           (error-message-string err))))))

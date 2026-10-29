@@ -40,8 +40,7 @@ Customize =cmd-rewind-excluded-commands= to exclude commands by name using regul
 #+END_SRC
 ** Limitations
 - Rewind records calls to the built-in =completing-read=; commands using other input APIs are not necessarily supported.
-- Only the FIRST =completing-read= call in a command is recorded and restored. Subsequent calls are ignored by =cmd-rewind=. Commands that require restoring a later =completing-read= call are not supported.
-- The saved completion arguments and collection are reused. If the underlying data changes, the saved collection may no longer reflect the current state.
+- Each command must call `completing-read` only once. Add commands that call it multiple times to `cmd-rewind-excluded-commands`.- The saved completion arguments and collection are reused. If the underlying data changes, the saved collection may no longer reflect the current state.
 - Commands that do not call =completing-read= during replay cannot be resumed by this mechanism.
 ** For Command Developers
 When =cmd-rewind-replay-session= is non-nil, Rewind is replaying a previously recorded session.
