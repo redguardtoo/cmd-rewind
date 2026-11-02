@@ -71,10 +71,11 @@
 ;;         :completing-read-input user-input)
 ;;
 ;; So get collection of original `completing-read' is,
-;;   (setq collection (nth 1 (plist-get cmd-rewind-replay-session :completing-read-args)))
+;;   (setq collection (nth 1 (plist-get cmd-rewind-replay-session
+;;                                      :completing-read-args)))
 ;;
-;; An advanced example for command developer (Please add the line ";; -*- lexical-binding: t; -*-"
-;; into the beginning of code file),
+;; An advanced example for command developer (Note: `lexical-binding'
+;; should not be nil),
 ;;
 ;;   (defun my-completion-table (candidates)
 ;;     "Create a completion table CANDIDATES."
@@ -96,16 +97,22 @@
 ;;     (interactive)
 ;;     (let* ((replay-session (and (boundp 'cmd-rewind-replay-session)
 ;;                                 cmd-rewind-replay-session))
-;;            (candidates (cond
-;;                         (replay-session
-;;                          ;; `my-command' is started by `cmd-rewind-resume'
-;;                          ;; Avoid execution of `my-computing' here, use cached data
-;;                          ;; Note COLLECTION is second parameters of `completing-read'
-;;                          ;; See `my-completion-table' for details
-;;                          (funcall (nth 1 (plist-get replay-session :completing-read-args)) nil nil 'original-candidates))
-;;                         (t
-;;                          (my-computing))))
-;;            (selected (completing-read "Select fruit: " (my-completion-table candidates))))
+;;            (candidates
+;;             (cond
+;;              (replay-session
+;;               ;; `my-command' is started by `cmd-rewind-resume'
+;;               ;; Avoid execution of `my-computing' here, use cached data
+;;               ;; Note COLLECTION is second parameters of `completing-read'
+;;               ;; See `my-completion-table' for details
+;;               (funcall (nth 1 (plist-get replay-session
+;;                                          :completing-read-args))
+;;                        nil
+;;                        nil
+;;                        'original-candidates))
+;;              (t
+;;               (my-computing))))
+;;            (selected (completing-read "Select fruit: "
+;;                                       (my-completion-table candidates))))
 ;;       (message "Selected fruit: %s" (cdr (assoc selected candidates)))))
 
 ;;; Code:
@@ -184,7 +191,7 @@
   (when (and (not cmd-rewind-completing-read-replaying-p)
              (not (plist-get session :completing-read-input-captured))
              (cmd-rewind-current-session-p session))
-    ;; Fallback in case `cmd-rewind-capture-input-before-command' failed.
+    ;; Fallback if `cmd-rewind-capture-input-before-command' failed
     (setq session
           (plist-put session
                      :completing-read-input
@@ -222,8 +229,8 @@
   "Record `completing-read' or replay a saved session.
 ORIG is the original function and ARGS are its arguments."
 
-  ;; `this-command' changes to `exit-minibuffer' when `read-string' is called
-  ;; so we use `current-minibuffer-command' instead
+  ;; `this-command' changes to `exit-minibuffer' when `read-string'
+  ;; is called.  So we use `current-minibuffer-command' instead
   (let* ((command current-minibuffer-command)
          session
          saved-completing-read-args
@@ -232,14 +239,14 @@ ORIG is the original function and ARGS are its arguments."
     (when cmd-rewind-debug
       (message "cmd-rewind-around-completing-read: command=%S" command))
     (cond
-     ;; Anonymous&Non-interactive commands and never participate in recording or replay
+     ;; Anonymous&Non-interactive commands never participate in recording
      ((or (not (symbolp command))
           (not (commandp command)))
       (when cmd-rewind-debug
         (message "Ignoring command: %S" command))
       (setq rlt (apply orig args)))
 
-     ;; Replay a named command, but `completing-read' not called, yet.
+     ;; Replay a named command, but `completing-read' not called, yet
      ((and cmd-rewind-replay-session
            (not cmd-rewind-completing-read-replaying-p))
       (setq session cmd-rewind-replay-session)
@@ -265,13 +272,14 @@ ORIG is the original function and ARGS are its arguments."
       (let ((cmd-rewind-completing-read-replaying-p t))
         (setq rlt (cmd-rewind-read orig saved-completing-read-args session))))
 
-     ;; Do not record nested calls during replay, or commands explicitly excluded by configuration.
+     ;; Do not record nested calls during replay, or commands explicitly
+     ;; excluded by configuration.
      ((or (and cmd-rewind-replay-session
-               cmd-rewind-completing-read-replaying-p) ; inside `completing-read'
+               cmd-rewind-completing-read-replaying-p) ; in `completing-read'
           ;; Please note `cmd-rewind-resume' is excluded too.
-          ;; Its logic is different from other excluded commands, see the code from beginning of
-          ;; this function!
-          ;; So `cmd-rewind-excluded-command-p' called is near the end of conditional statement
+          ;; Its logic is different from other excluded commands, see the code
+          ;; from beginning of this function!
+          ;; Calling `cmd-rewind-excluded-command-p' at the end this statement
           (cmd-rewind-excluded-command-p command))
       (when cmd-rewind-debug
         (message "Not recording command: %S" command))
@@ -281,19 +289,18 @@ ORIG is the original function and ARGS are its arguments."
      (t
       (when cmd-rewind-debug
         (message "Recording session for command: %S" command))
-      (setq rlt
-            (cmd-rewind-read
-             orig
-             args
-             (setq cmd-rewind-last-session
-                   (list :command command
-                         :completing-read-args (copy-sequence args)
-                         :directory (or cmd-rewind-command-start-directory default-directory)
-                         :prefix current-prefix-arg
-                         :completing-read-input (or (nth 4 args) "")
-                         :completing-read-input-captured nil))))))
+      (setq cmd-rewind-last-session
+            (list :command command
+                  :completing-read-args (copy-sequence args)
+                  :directory (or cmd-rewind-command-start-directory
+                                 default-directory)
+                  :prefix current-prefix-arg
+                  :completing-read-input (or (nth 4 args) "")
+                  :completing-read-input-captured nil))
+      (setq rlt (cmd-rewind-read orig
+                                 args
+                                 cmd-rewind-last-session))))
     rlt))
-
 
 ;;;###autoload
 (defun cmd-rewind-clear ()
@@ -361,8 +368,7 @@ ORIG is the original function and ARGS are its arguments."
   (with-temp-buffer
     (insert-file-contents file)
     (goto-char (point-min))
-    (let* ((read-eval nil)
-           (read-circle t)
+    (let* ((read-circle t)
            (session (read (current-buffer))))
       ;; The file must contain exactly one Lisp object.
       (skip-chars-forward " \t\r\n")
@@ -380,8 +386,7 @@ ORIG is the original function and ARGS are its arguments."
     (with-temp-buffer
       (insert serialized)
       (goto-char (point-min))
-      (let* ((read-eval nil)
-             (read-circle t)
+      (let* ((read-circle t)
              (copy (read (current-buffer))))
         (skip-chars-forward " \t\r\n")
         (unless (eobp)
